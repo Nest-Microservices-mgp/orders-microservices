@@ -1,6 +1,14 @@
-import { HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { RpcException } from '@nestjs/microservices';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
+import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { PrismaClient } from 'generated/prisma';
+import { firstValueFrom } from 'rxjs';
+import { PRODUCT_SERVICE } from 'src/config';
 import { ChangeOrderStatusDto } from './dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderPaginationDto } from './dto/order-pagination.dto';
@@ -9,16 +17,27 @@ import { OrderPaginationDto } from './dto/order-pagination.dto';
 export class OrdersService extends PrismaClient implements OnModuleInit {
   private readonly logger = new Logger(OrdersService.name);
 
+  constructor(
+    @Inject(PRODUCT_SERVICE) private readonly productsClient: ClientProxy,
+  ) {
+    super();
+  }
+
   async onModuleInit() {
     await this.$connect();
     this.logger.log('Prisma Client connected successfully');
   }
 
-  create(createOrderDto: CreateOrderDto) {
-    return {
-      service: 'ordersMicroservice',
-      createOrderDto: createOrderDto,
-    };
+  async create(createOrderDto: CreateOrderDto) {
+    const ids = [5, 6];
+    const products = await firstValueFrom(
+      this.productsClient.send({ cmd: 'validate_products' }, ids),
+    );
+    return products;
+    // return {
+    //   service: 'ordersMicroservice',
+    //   createOrderDto: createOrderDto,
+    // };
     // return this.order.create({
     //   data: createOrderDto,
     // });
