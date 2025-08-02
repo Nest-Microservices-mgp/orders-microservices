@@ -29,18 +29,68 @@ export class OrdersService extends PrismaClient implements OnModuleInit {
   }
 
   async create(createOrderDto: CreateOrderDto) {
-    const ids = [5, 6];
-    const products = await firstValueFrom(
-      this.productsClient.send({ cmd: 'validate_products' }, ids),
-    );
-    return products;
-    // return {
-    //   service: 'ordersMicroservice',
-    //   createOrderDto: createOrderDto,
-    // };
-    // return this.order.create({
-    //   data: createOrderDto,
-    // });
+    try {
+      // 1. Confirmar los ids de los productos para ver si existen
+      const productIds = createOrderDto.items.map((item) => item.productId);
+      const products = await firstValueFrom(
+        this.productsClient.send({ cmd: 'validate_products' }, productIds),
+      );
+
+      // 2. Cálculos de los valores
+      const totalAmount = createOrderDto.items.reduce((acc, orderItem) => {
+        const item = products.find(
+          (product) => product.id === orderItem.productId,
+        ).price;
+        return acc + item * orderItem.quantity;
+      }, 0);
+
+      const totalItems = createOrderDto.items.reduce(
+        (acc, orderItem) => acc + orderItem.quantity,
+        0,
+      );
+
+      // 3. Crear transacción
+      const order = await this.order.create({
+        data: {
+          totalAmount,
+          totalItems,
+          OrderItems: {
+            createMany: {
+              data: createOrderDto.items.map((orderItem) => ({
+                price: products.find(
+                  (product) => product.id === orderItem.productId,
+                ).price,
+                productId: orderItem.productId,
+                quantity: orderItem.quantity,
+              })),
+            },
+          },
+        },
+        include: {
+          OrderItems: {
+            select: {
+              price: true,
+              quantity: true,
+              productId: true,
+            },
+          },
+        },
+      });
+
+      return {
+        ...order,
+        OrderItems: order.OrderItems.map((orderItem) => ({
+          ...orderItem,
+          name: products.find((product) => product.id === orderItem.productId)
+            .name,
+        })),
+      };
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: `Check logs`,
+      });
+    }
   }
 
   async findAll(orderPaginationDto: OrderPaginationDto) {
