@@ -12,6 +12,7 @@ import { NATS_SERVICE } from 'src/config';
 import { ChangeOrderStatusDto } from './dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrderPaginationDto } from './dto/order-pagination.dto';
+import { OrderWithProducts } from './order-with-products.interface';
 
 @Injectable()
 export class OrdersService extends PrismaClient implements OnModuleInit {
@@ -84,6 +85,7 @@ export class OrdersService extends PrismaClient implements OnModuleInit {
         })),
       };
     } catch (error) {
+      this.logger.error(error);
       throw new RpcException({
         status: HttpStatus.BAD_REQUEST,
         message: `Check logs`,
@@ -165,5 +167,20 @@ export class OrdersService extends PrismaClient implements OnModuleInit {
       where: { id },
       data: { status },
     });
+  }
+
+  async createPaymentSession(order: OrderWithProducts) {
+    const paymentSession = await firstValueFrom(
+      this.client.send('create.payment.session', {
+        orderId: order.id,
+        currency: 'usd',
+        items: order.OrderItems.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+      }),
+    );
+    return paymentSession;
   }
 }
