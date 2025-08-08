@@ -1,0 +1,52 @@
+# 1- Dependencias
+FROM node:21-alpine3.19 as deps
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+COPY package-lock*.json ./
+
+# ./node_modules from package.json
+RUN npm install 
+
+
+# 2- Builder - Construye la aplicación
+FROM node:21-alpine3.19 as build
+
+ARG ORDERS_MS_DATABASE_URL
+ENV DATABASE_URL=${ORDERS_MS_DATABASE_URL}
+
+WORKDIR /usr/src/app
+
+COPY --from=deps /usr/src/app/node_modules ./node_modules
+# Copy code and prisma
+COPY . .  
+
+# Create table in database and later generate prisma client code ./generated
+RUN npx prisma migrate deploy
+RUN npx prisma generate
+
+# RUN npm run test
+# ./dist from code
+RUN npm run build 
+
+RUN npm ci -f --only=production && npm cache clean --force
+
+
+
+
+# 3- Crear la imagen final de Docker
+FROM node:21-alpine3.19 as prod
+
+WORKDIR /usr/src/app
+
+COPY --from=build /usr/src/app/node_modules ./node_modules
+COPY --from=build /usr/src/app/dist ./dist
+COPY --from=build /usr/src/app/generated ./generated
+
+ENV NODE_ENV=production
+USER node 
+
+EXPOSE 3000
+
+CMD ["node", "dist/main.js"]
